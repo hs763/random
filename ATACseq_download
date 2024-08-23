@@ -1,0 +1,49 @@
+#downloading scATACseq data from chimp and human organoids (made according to Lancaster et al. 20213 protocol) from Eb, NEcto and NEpi stages. 
+#https://www.nature.com/articles/s41586-019-1654-9?fromPaywallRec=false#Sec2
+
+nano filenames 
+#!/bin/bash
+# Run this file in bash with this command:  ./filename
+HOST=ftp.ebi.ac.uk
+USER=anonymous
+ftp -pinv $HOST <<EOF
+user $USER
+cd biostudies/fire/E-MTAB-/089/E-MTAB-8089/Files
+binary
+mget "h_EB_RG*.bam"
+mget "h_NEpith_RG*.bam"
+mget "h_NEcto_RG*.bam"
+EOF
+
+chmod +x filenames
+./filenames
+
+samtools merge merged_h_EB.bam h_EB*.bam
+samtools merge merged_h_NEcto.bam h_NEcto*.bam
+samtools merge merged_h_NEpith.bam h_NEpith*.ba
+
+samtools sort -o sorted_merged_h_EB.bam merged_h_EB.bam
+samtools sort -o sorted_merged_h_NEcto.bam merged_h_NEcto.bam
+samtools sort -o sorted_merged_h_NEpith.bam merged_h_NEpith.bam
+
+samtools index sorted_merged_h_EB.bam
+samtools index sorted_merged_h_NEcto.bam
+samtools index sorted_merged_h_NEpith.bam
+
+#create a new project in seq monk with apporpreate genome verison 
+#upload data as BAM file. You can use the unsorted or sorted. 
+#Data>DefienProbes>chosoe your file and run the MSCP peak calling or soemthing liek that
+
+#to jsut getthe traces withougththepeak calling youjsut run this. 
+bamCoverage -b sorted_merged_h_EB.bam -o coverage_h_EB.bw
+bamCoverage -b sorted_merged_h_NEcto.bam -o coverage_h_NEcto.bw
+bamCoverage -b sorted_merged_h_NEpith.bam -o coverage_h_NEpith.bw
+
+#runing the same for chimp
+samtools merge merged_c_EB.bam c_EB*.bam
+samtools merge merged_c_NEcto.bam c_NEcto*.bam
+samtools merge merged_c_NEpith.bam c_NEpith*.ba
+
+bamCoverage -b sorted_merged_c_EB.bam -o coverage_c_EB.bw
+bamCoverage -b sorted_merged_c_NEcto.bam -o coverage_c_NEcto.bw
+bamCoverage -b sorted_merged_c_NEpith.bam -o coverage_c_NEpith.bw
