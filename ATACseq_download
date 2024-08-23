@@ -44,6 +44,14 @@ samtools merge merged_c_EB.bam c_EB*.bam
 samtools merge merged_c_NEcto.bam c_NEcto*.bam
 samtools merge merged_c_NEpith.bam c_NEpith*.ba
 
+samtools sort -o sorted_merged_c_EB.bam merged_c_EB.bam
+samtools sort -o sorted_merged_c_NEcto.bam merged_c_NEcto.bam
+samtools sort -o sorted_merged_c_NEpith.bam merged_c_NEpith.bam
+
+samtools index sorted_merged_c_EB.bam
+samtools index sorted_merged_c_NEcto.bam
+samtools index sorted_merged_c_NEpith.bam
+
 bamCoverage -b sorted_merged_c_EB.bam -o coverage_c_EB.bw
 bamCoverage -b sorted_merged_c_NEcto.bam -o coverage_c_NEcto.bw
 bamCoverage -b sorted_merged_c_NEpith.bam -o coverage_c_NEpith.bw
