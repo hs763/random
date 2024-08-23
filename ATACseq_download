@@ -39,6 +39,11 @@ bamCoverage -b sorted_merged_h_EB.bam -o coverage_h_EB.bw
 bamCoverage -b sorted_merged_h_NEcto.bam -o coverage_h_NEcto.bw
 bamCoverage -b sorted_merged_h_NEpith.bam -o coverage_h_NEpith.bw
 
+#lifting over to hg38 genome 
+bigWigToBedGraph coverage_h_EB.bw coverage_h_EB.bedGraph
+bigWigToBedGraph coverage_h_NEcto.bw coverage_h_NEcto.bedGraph
+bigWigToBedGraph coverage_h_NEpith.bw coverage_h_NEpith.bedGraph
+
 #runing the same for chimp
 samtools merge merged_c_EB.bam c_EB*.bam
 samtools merge merged_c_NEcto.bam c_NEcto*.bam
