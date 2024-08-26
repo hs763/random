@@ -51,20 +51,30 @@ bedtools bamtobed -i sorted_merged_h_NEpith.bam > sorted_merged_h_NEpith.bed
 
 #lift over
 liftOver  sorted_merged_h_EB.bed hg19ToHg38.over.chain.gz  sorted_merged_h_EB_hg38.bed unMapped_h_EB_h38.bed
-...
 liftOver  sorted_merged_h_NEcto.bed hg19ToHg38.over.chain.gz  sorted_merged_h_NEcto_hg38.bed unMapped_h_NEcto_h38.bed
 liftOver  sorted_merged_h_NEpith.bed hg19ToHg38.over.chain.gz  sorted_merged_h_NEpith_hg38.bed unMapped_h_NEpith_h38.bed
 
 #comvert to bam 
-bedtools bedtobam -i sorted_merged_h_EB_hg38.bed > sorted_merged_h_EB_hg38.bam 
-bedtools bedtobam -i sorted_merged_h_NEcto_hg38.bed > sorted_merged_h_Necto_hg38.bam 
-bedtools bedtobam -i sorted_merged_h_NEpith_hg38.bed > sorted_merged_h_NEpith_hg38.bam
+bedtools bedtobam -i sorted_merged_h_EB_hg38.bed -g hg38.chrom.sizes > sorted_merged_h_EB_hg38.bam
+bedtools bedtobam -i sorted_merged_h_NEcto_hg38.bed -g hg38.chrom.sizes > sorted_merged_h_Necto_hg38.bam 
+bedtools bedtobam -i sorted_merged_h_NEpith_hg38.bed -g hg38.chrom.sizes > sorted_merged_h_NEpith_hg38.bam
+
+#sort 
+samtools sort -o sorted_sorted_merged_h_EB_hg38.bam sorted_merged_h_EB_hg38.bam
+samtools sort -o sorted_sorted_merged_h_NEcto_hg38.bam sorted_merged_h_NEcto_hg38.bam
+samtools sort -o sorted_sorted_merged_h_NEpith_hg38.bam sorted_merged_h_NEpith_hg38.bam
+
+#index
+samtools index sorted_sorted_merged_h_EB_hg38.bam
+samtools index sorted_sorted_merged_h_NEcto_hg38.bam
+samtools index sorted_sorted_merged_h_NEpith_hg38.bam
 
 #convert to BigWig
-bamCoverage -b sorted_merged_h_EB_hg38.bam -o coverage_h_EB_hg38.bw
-bamCoverage -b sorted_merged_h_Necto_hg38.bam -o coverage_h_NEcto_hg38.bw
-bamCoverage -b sorted_merged_h_NEpith_hg38.bam -o coverage_h_NEpith_hg38.bw
+bamCoverage -b sorted_sorted_merged_h_EB_hg38.bam -o coverage_h_EB_hg38.bw
+bamCoverage -b sorted_sorted_merged_h_Necto_hg38.bam -o coverage_h_NEcto_hg38.bw
+bamCoverage -b sorted_sorted_merged_h_NEpith_hg38.bam -o coverage_h_NEpith_hg38.bw
 
+---------------------------------------------------------------------------------------------------------------------------------------------------------
 #runing the same for chimp
 samtools merge merged_c_EB.bam c_EB*.bam
 samtools merge merged_c_NEcto.bam c_NEcto*.bam
@@ -81,3 +91,6 @@ samtools index sorted_merged_c_NEpith.bam
 bamCoverage -b sorted_merged_c_EB.bam -o coverage_c_EB.bw
 bamCoverage -b sorted_merged_c_NEcto.bam -o coverage_c_NEcto.bw
 bamCoverage -b sorted_merged_c_NEpith.bam -o coverage_c_NEpith.bw
+
+#viewing in the IGV for the zeb2. 
+
