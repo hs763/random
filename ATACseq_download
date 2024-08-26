@@ -1,6 +1,7 @@
 #downloading scATACseq data from chimp and human organoids (made according to Lancaster et al. 20213 protocol) from Eb, NEcto and NEpi stages. 
 #https://www.nature.com/articles/s41586-019-1654-9?fromPaywallRec=false#Sec2
 
+#downloadign all the dataf from the paper
 nano filenames 
 #!/bin/bash
 # Run this file in bash with this command:  ./filename
@@ -18,14 +19,17 @@ EOF
 chmod +x filenames
 ./filenames
 
+#merging all the files from each category into a big bam file (mkaing preudo-bulk data) 
 samtools merge merged_h_EB.bam h_EB*.bam
 samtools merge merged_h_NEcto.bam h_NEcto*.bam
 samtools merge merged_h_NEpith.bam h_NEpith*.ba
 
+#sorting the merged bam files
 samtools sort -o sorted_merged_h_EB.bam merged_h_EB.bam
 samtools sort -o sorted_merged_h_NEcto.bam merged_h_NEcto.bam
 samtools sort -o sorted_merged_h_NEpith.bam merged_h_NEpith.bam
 
+#indexing the emrged bam files
 samtools index sorted_merged_h_EB.bam
 samtools index sorted_merged_h_NEcto.bam
 samtools index sorted_merged_h_NEpith.bam
@@ -34,15 +38,32 @@ samtools index sorted_merged_h_NEpith.bam
 #upload data as BAM file. You can use the unsorted or sorted. 
 #Data>DefienProbes>chosoe your file and run the MSCP peak calling or soemthing liek that
 
-#to jsut getthe traces withougththepeak calling youjsut run this. 
+#converging the bam files into BigWig format so that they can be viewed using IGV. 
 bamCoverage -b sorted_merged_h_EB.bam -o coverage_h_EB.bw
 bamCoverage -b sorted_merged_h_NEcto.bam -o coverage_h_NEcto.bw
 bamCoverage -b sorted_merged_h_NEpith.bam -o coverage_h_NEpith.bw
 
-#lifting over to hg38 genome 
-bigWigToBedGraph coverage_h_EB.bw coverage_h_EB.bedGraph
-bigWigToBedGraph coverage_h_NEcto.bw coverage_h_NEcto.bedGraph
-bigWigToBedGraph coverage_h_NEpith.bw coverage_h_NEpith.bedGraph
+#lifting over from h19 to hg38 genome 
+#convert bam to bed
+bedtools bamtobed -i sorted_merged_h_EB.bam > sorted_merged_h_EB.bed
+bedtools bamtobed -i sorted_merged_h_NEcto.bam > sorted_merged_h_NEcto.bed
+bedtools bamtobed -i sorted_merged_h_NEpith.bam > sorted_merged_h_NEpith.bed
+
+#lift over
+liftOver  sorted_merged_h_EB.bed hg19ToHg38.over.chain.gz  sorted_merged_h_EB_hg38.bed unMapped_h_EB_h38.bed
+...
+liftOver  sorted_merged_h_NEcto.bed hg19ToHg38.over.chain.gz  sorted_merged_h_NEcto_hg38.bed unMapped_h_NEcto_h38.bed
+liftOver  sorted_merged_h_NEpith.bed hg19ToHg38.over.chain.gz  sorted_merged_h_NEpith_hg38.bed unMapped_h_NEpith_h38.bed
+
+#comvert to bam 
+bedtools bedtobam -i sorted_merged_h_EB_hg38.bed > sorted_merged_h_EB_hg38.bam 
+bedtools bedtobam -i sorted_merged_h_NEcto_hg38.bed > sorted_merged_h_Necto_hg38.bam 
+bedtools bedtobam -i sorted_merged_h_NEpith_hg38.bed > sorted_merged_h_NEpith_hg38.bam
+
+#convert to BigWig
+bamCoverage -b sorted_merged_h_EB_hg38.bam -o coverage_h_EB_hg38.bw
+bamCoverage -b sorted_merged_h_Necto_hg38.bam -o coverage_h_NEcto_hg38.bw
+bamCoverage -b sorted_merged_h_NEpith_hg38.bam -o coverage_h_NEpith_hg38.bw
 
 #runing the same for chimp
 samtools merge merged_c_EB.bam c_EB*.bam
