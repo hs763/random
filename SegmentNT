@@ -1,0 +1,79 @@
+#go to xeon /data1/hania/SegmentNT
+#cloned the SegmentNT girhub repository 
+
+#segemnt ZEB2 locus into 30kbp regions and save as .fa
+segment1: chr2:144,384,081-144,414,081
+segment2: chr2:144,414,081-144,444,081
+segment3: chr2:144,444,081-144,474,081
+segment4: chr2:144,474,081-144,504,081
+segment4: chr2:144,504,081-144,520,119
+
+python3.10
+#from https://colab.research.google.com/#scrollTo=zkTU4k4_fn39&fileId=https%3A//huggingface.co/InstaDeepAI/segment_nt/blob/main/inference_segment_nt.ipynb
+
+import os
+import jax
+import jax.numpy as jnp
+import haiku as hk
+from nucleotide_transformer.pretrained import get_pretrained_segment_nt_model
+from Bio import SeqIO  # Biopython for reading FASTA files
+
+# Initialize CPU as default JAX device
+jax.config.update("jax_platform_name", "cpu")
+
+backend = "cpu"
+devices = jax.devices(backend)
+num_devices = len(devices)
+print(f"Devices found: {devices}")
+
+# Ensure the number of DNA tokens is divisible by 4
+max_num_nucleotides = 49992
+assert max_num_nucleotides % 4 == 0, (
+    "The number of DNA tokens (excluding the CLS token prepended) needs to be divisible by"
+    "2 to the power of the number of downsampling blocks, i.e., 4.")
+
+# Load the pretrained model
+parameters, forward_fn, tokenizer, config = get_pretrained_segment_nt_model(
+    model_name="segment_nt",
+    embeddings_layers_to_save=(29,),
+    attention_maps_to_save=((1, 4), (7, 10)),
+    max_positions=max_num_nucleotides + 1,
+)
+forward_fn = hk.transform(forward_fn)
+apply_fn = jax.pmap(forward_fn.apply, devices=devices, donate_argnums=(0,))
+
+# Initialize PRNG key and replicate parameters across devices
+random_key = jax.random.PRNGKey(seed=0)
+keys = jax.device_put_replicated(random_key, devices=devices)
+parameters = jax.device_put_replicated(parameters, devices=devices)
+
+# Read sequences from the FASTA file
+
+def read_fasta(file_path):
+    sequences = []
+    for record in SeqIO.parse(file_path, "fasta"):
+        sequences.append(str(record.seq))
+    return sequences
+
+file_path = "/data1/hania/SegmentNT/data/ZEB2_segment1.fa"
+sequences = read_fasta(file_path)
+
+# Tokenize the sequences
+tokens_ids = [b[1] for b in tokenizer.batch_tokenize(sequences)]
+tokens_str = [b[0] for b in tokenizer.batch_tokenize(sequences)]
+tokens = jnp.asarray(tokens_ids, dtype=jnp.int32)
+
+# Perform inference
+outs = apply_fn(parameters, keys, tokens)
+
+# Obtain logits and transform to probabilities
+logits = outs["logits"]
+probabilities = jnp.asarray(jax.nn.softmax(logits, axis=-1))[..., -1]
+print(f"Probabilities shape: {probabilities.shape}")
+
+print(f"Features inferred: {config.features}")
+
+# Extract probabilities associated with intron
+idx_intron = config.features.index("intron")
+probabilities_intron = probabilities[..., idx_intron]
+print(f"Intron probabilities shape: {probabilities_intron.shape}")
