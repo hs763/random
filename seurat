@@ -1,0 +1,409 @@
+#####mouse######
+
+cd /data2/hanna/axonoutgrowth
+singularity shell --bind /data2:/mnt singlecell.sif
+cd /mnt/hanna/axonoutgrowth/mouse2/seurat
+R
+
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(Matrix)
+library(ggplot2)
+
+#reading in the data
+path2data <- "/mnt/hanna/axonoutgrowth/data/mouse/"
+counts <- readMM(paste0(path2data, "counts.mtx"))
+metadata <- read.csv(paste0(path2data, "metadata.csv"))
+barcodes <- read.csv(paste0(path2data, "barcodes.csv"))
+gene_info <- read.csv(paste0(path2data, "gene_info.csv"))
+
+counts <- as(counts, "CsparseMatrix")
+rownames(counts) <- gene_info$unique_name
+colnames(counts) <- barcodes$barcodes 
+
+
+#make mouse surat object (mso)
+mso <- CreateSeuratObject(counts = counts,
+                            assay = "RNA",
+                            meta.data = metadata,
+                            project = "AxonOutgrowth_Mouse"
+                          )
+
+saveRDS(mso, "MouseSeuratObject_raw.rds")
+
+#An object of class Seurat 
+#56981 features across 631700 samples within 1 assay 
+#Active assay: RNA (56981 features, 0 variable features)
+#1 layer present: counts
+
+mso[["percent.mt"]] <- PercentageFeatureSet(mso, pattern = "^mt-")
+head(mso@meta.data, 5)
+
+#ploting QC plots 
+nFeature_bySampleName <- VlnPlot(mso, features = "nFeature_RNA", pt.size = 0, group.by = "sample_name_M", flip = TRUE, log = TRUE) 
+nFeature_bySampleName <- nFeature_bySampleName + theme(
+  axis.text.x = element_text(size = 8),
+  axis.title.x = element_text(size = 12), 
+  plot.title = element_text(size = 14)
+) + labs(
+  x = "Sample Name",  
+  y = "log[nFeature]"    
+)
+ggsave("nFeature_bySampleName_violin.png", plot = nFeature_bySampleName, width = 10, height = 8, dpi = 300)
+
+nCount_bySampleName <- VlnPlot(mso, features = "nCount_RNA", pt.size = 0, group.by = "sample_name_M", flip = TRUE, log = TRUE) 
+nCount_bySampleName <- nCount_bySampleName + theme(
+  axis.text.x = element_text(size = 8),
+  axis.title.x = element_text(size = 12), 
+  plot.title = element_text(size = 14)
+) + labs(
+  x = "Sample Name",  
+  y = "log[nCount]"    
+)
+ggsave("nCount_bySampleName_violin.png", plot = nCount_bySampleName, width = 10, height = 8, dpi = 300)
+
+PerMT_bySampleName <- VlnPlot(mso, features = "percent.mt", pt.size = 0, group.by = "sample_name_M", flip = TRUE, log = TRUE) 
+PerMT_bySampleName <- PerMT_bySampleName + theme(
+  axis.text.x = element_text(size = 8),
+  axis.title.x = element_text(size = 12), 
+  plot.title = element_text(size = 14)
+) + labs(
+  x = "Sample Name",  
+  y = "log[PerMT]"    
+)
+ggsave("PerMT_bySampleName_violin.png", plot = PerMT_bySampleName, width = 10, height = 8, dpi = 300)
+
+plot1 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "percent.mt", log = FALSE, jitter = TRUE, group.by = "sample_name_M")
+ggsave("nCounts_vs_PerMT.png", plot = plot1, width = 10, height = 8, dpi = 300)
+plot2 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "sample_name_M")
+ggsave("nCounts_vs_nFeature.png", plot = plot2, width = 10, height = 8, dpi = 300)
+
+saveRDS(mso, "MouseSeuratObject_befroeSubset.rds")
+
+mso <- subset(mso, subset = nFeature_RNA > 200 & nCount_RNA > 200 & percent.mt < 20 & complexity < 0.9)
+mso@meta.data$complexity =  mso@meta.data$nFeature_RNA/mso@meta.data$nCount_RNA
+
+plot1 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "percent.mt", log = FALSE, jitter = TRUE, group.by = "sample_name_M")
+ggsave("nCounts_vs_PerMT_subset.png", plot = plot1, width = 10, height = 8, dpi = 300)
+plot2 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "sample_name_M")
+ggsave("nCounts_vs_nFeature_subset.png", plot = plot2, width = 10, height = 8, dpi = 300)
+
+saveRDS(mso, "MouseSeuratObject_Subset_beforNorm.rds")
+
+
+#normalisation 
+mso <- NormalizeData(mso, normalization.method = "LogNormalize", scale.factor = 10000)
+
+#identifying highly variable features 
+mso <- FindVariableFeatures(mso, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(mso), 10)
+
+top10 
+#[1] "Rs1"           "Sag"           "Pdc"           "Pkd1l1"       
+#[5] "Opn1sw"        "Flt1"          "F630040K05Rik" "Rbp3"         
+#[9] "Pde6g"         "Pde6b
+#Some of these gens are invovled in retinal tissue and they are porbably most variabel due to 2_22_2 sample beign rich in retial identities. 
+#removing the sample
+mso <- subset(mso, subset = sample_name_M != "2_22_2")
+
+#identifying highly variable features after sampel 2_22_2 was removed
+mso <- FindVariableFeatures(mso, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(mso), 10)
+
+top10 
+#[1] "Dnah8"   "Dlx6os1" "Cdc20b"  "Ttr"     "Ttc6"    "Gm49678" "Hoxc6"  
+3[8] "Nr5a2"   "Hoxd3"   "L1td1"
+
+plot1 <- VariableFeaturePlot(mso)
+ggsave("Unlabled_VariableFeatures.png", plot = plot1, width = 10, height = 8, dpi = 300)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+ggsave("Labled_VariableFeatures.png", plot = plot2, width = 10, height = 8, dpi = 300)
+
+#scaling 
+all.genes <- rownames(mso)
+mso <- ScaleData(mso, features = all.genes)
+
+
+#performing lienar dimentionality reduction: PCA
+mso <- RunPCA(mso, features = VariableFeatures(object = mso))
+print(mso[["pca"]], dims = 1:5, nfeatures = 10)
+# PC_ 1 
+# Positive:  ENSMUSG00000121179, Nalf1, Nrxn1, Myt1l, Gm26871, Snhg14, Akap6, Celf4, Ccser1, Usp29 
+# Negative:  Rorb, Etl4, Smoc1, Plagl1, Cdon, H19, Vsx2, Mecom, Fbn2, Cdh20 
+# PC_ 2 
+# Positive:  ENSMUSG00000062991, Celf4, Nrxn1, Ccser1, Unc5d, Myt1l, Sorbs2, Nalf1, Snhg14, Dscam 
+# Negative:  Tyr, Otx2os1, Oca2, Pmel, Kcnq5, Slc6a15, Gpnmb, Slc4a5, Kcnip4, Mitf 
+# PC_ 3 
+# Positive:  Rorb, Cdh20, Cngb3, Kctd8, Unc13c, Ankrd33b, Dkk3, Cdon, Cntn1, Ush2a 
+# Negative:  Rspo3, Rspo2, Sox2ot, Erbb4, Mir9-3hg, Rfx4, Lrp1b, Prdm16, Tmem132c, Masp1 
+# PC_ 4 
+# Positive:  Oca2, Gpnmb, Tyr, Stxbp5l, Slc6a15, Kcnq5, Nebl, Mylk, Col8a1, Pmel 
+# Negative:  Rspo2, Sox2ot, Lmx1a, Wnt8b, Rspo3, Rspo1, Lrrtm3, Masp1, Eya4, Cachd1 
+# PC_ 5 
+# Positive:  Dnah8, Lncenc1, L1td1, Cdh1, Pvt1, Zfp990, Nr5a2, Alpl, Slc2a3, Zfp42 
+# Negative:  Rspo2, Gabrb3, Rspo3, Tyr, Sorbs2, Rorb, Kcnip4, Pmel, Ccser1, Prkg1 
+
+VizDimLoadings(mso, dims = 1:5, reduction = "pca", ncol = 5)
+pca_SampleName <- DimPlot(mso, reduction = "pca", pt.size = 0.5,group.by = "sample_name_M")
+ggsave("PCA_bySampleName.png", plot = pca_SampleName, width = 10, height = 8, dpi = 300)
+
+pca_batch <- DimPlot(mso, reduction = "pca", pt.size = 0.5,group.by = "batch_M")
+ggsave("PCA_bybatch.png", plot = pca_batch, width = 10, height = 8, dpi = 300)
+
+DimHeatmap(mso, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmapPCA15 <- DimHeatmap(mso, dims = 1:15, cells = 500, balanced = TRUE)
+ggsave("DimHeatMap_first_15PCAs.png", plot = DimHeatmapPCA15,  width = 8, height = 12, dpi = 300)
+
+elbow <- ElbowPlot(mso)
+ggsave("elbow_plot.png", plot = elbow,  width = 10, height = 8, dpi = 300)
+
+#downstream analysis with 5 PCAs 
+#clustering 
+mso <- FindNeighbors(mso, dims = 1:5)
+mso <- FindClusters(mso, resolution = 0.1)
+mso@meta.data)head(Idents(mso), 5)
+
+mso <- RunUMAP(mso, dims = 1:5)
+umap <- DimPlot(mso, reduction = "umap", group.by = "sample_name_M")
+ggsave("umap_top5PCAs.png", plot = umap,  width = 10, height = 8, dpi = 300)
+
+saveRDS(mso, "MouseSeuratObject_Norm_PCA_UMAP.rds")
+
+... 
+
+mso <- readRDS("/mnt/hanna/axonoutgrowth/mouse2/seurat/mso/MouseSeuratObject_Norm_PCA_UMAP.rds")
+msoumap <- DimPlot(mso, reduction = "umap", group.by = "day_M")
+ggsave("umap_top5PCAs_byDay.png", plot = umap,  width = 10, height = 8, dpi = 300)
+
+umap <- DimPlot(mso, reduction = "umap", group.by = "batch_M")
+ggsave("umap_top5PCAs_bybatch.png", plot = umap,  width = 10, height = 8, dpi = 300)
+
+umap <- DimPlot(mso, reduction = "umap", group.by = "RNA_snn_res.0.1")
+ggsave("umap_top5PCAs_bybatch.png", plot = umap,  width = 10, height = 8, dpi = 300)
+
+
+#trailing differetn integration methoods: 
+mso <- readRDS("/mnt/hanna/axonoutgrowth/mouse2/seurat/mso/MouseSeuratObject_Subset_beforNorm.rds")
+mso <- subset(mso, subset = sample_name_M != "2_22_2")
+saveRDS(mso,"/mnt/hanna/axonoutgrowth/mouse2/seurat/mso/MouseSeuratObject_Subset.rds")
+mso[["RNA"]] <- split(mso[["RNA"]], f = mso$batch_M)
+mso <- NormalizeData(mso)
+mso <- FindVariableFeatures(mso)
+mso <- ScaleData(mso)
+mso <- RunPCA(mso)
+
+mso <- IntegrateLayers(object = mso, method = CCAIntegration, orig.reduction = "pca", new.reduction = "integrated.cca",verbose = FALSE)
+mso <- IntegrateLayers(object = mso, method = HarmonyIntegration, orig.reduction = "pca", new.reduction = "harmony",verbose = FALSE)
+
+ElbowPlot(mso, reduction = "integrated.cca")
+
+#CCAintegration
+mso <- FindNeighbors(mso, reduction = "integrated.cca", dims = 1:5)
+mso <- FindClusters(mso, resolution = 0.2, cluster.name = "cca_clusters")
+mso <- RunUMAP(mso, reduction = "integrated.cca", dims = 1:5, reduction.name = "umap.cca")
+
+p1 <- DimPlot(mso, reduction = "umap.cca", group.by = c("day_M"), combine = FALSE, label.size = 2)
+ggsave("CCAintegration_umap_byDay.png", plot = p1, width = 10, height = 8, dpi = 300)
+p2 <- DimPlot(mso, reduction = "umap.cca", group.by = c("batch_M"), combine = FALSE, label.size = 2)
+ggsave("CCAintegration_umap_byBatch.png", plot = p2, width = 10, height = 8, dpi = 300)
+p3 <- DimPlot(mso, reduction = "umap.cca", group.by = c("sample_name_M"), combine = FALSE, label.size = 2)
+ggsave("CCAintegration_umap_bySampleName.png", plot = p3, width = 10, height = 8, dpi = 300)
+p4 <- DimPlot(mso, reduction = "umap.cca", group.by = c("cca_clusters"), combine = FALSE, label.size = 2)
+
+
+#harmony
+mso <- FindNeighbors(mso, reduction = "harmony", dims = 1:5)
+mso <- FindClusters(mso, resolution = 0.2, cluster.name = "harmony_clusters")
+mso <- RunUMAP(mso, reduction = "harmony", dims = 1:5, reduction.name = "umap.harmony")
+
+p1 <- DimPlot(mso, reduction = "umap.harmony", dims = c(1, 2), group.by = c("day_M"), combine = FALSE, label.size = 2)
+ggsave("Harmony_umap_byDay.png", plot = p1, width = 10, height = 8, dpi = 300)
+p2 <- DimPlot(mso, reduction = "umap.harmony", group.by = c("batch_M"), combine = FALSE, label.size = 2)
+ggsave("Harmony_umap_byBatch.png", plot = p2, width = 10, height = 8, dpi = 300)
+p3 <- DimPlot(mso, reduction = "umap.harmony", group.by = c("sample_name_M"), combine = FALSE, label.size = 2)
+ggsave("Harmony_umap_bySampleName.png", plot = p3, width = 10, height = 8, dpi = 300)
+p4 <- DimPlot(mso, reduction = "umap.harmony", group.by = c("harmony_clusters"), combine = FALSE, label.size = 2)
+
+mso <- JoinLayers(mso)
+
+saveRDS(mso, "/mnt/hanna/axonoutgrowth/mouse2/seurat/mso/MouseSeuratObject_Subset_integrated.rds")
+
+#finding markers
+FindMarkers(mso, ident.1 = 2)
+
+
+
+
+#experiment
+mso2 <- subset(mso, subset = sample_name_M != "2_16_2")
+mso2 <- subset(mso2, subset = sample_name_M != "2_16_1")
+mso2 <- FindVariableFeatures(mso2, selection.method = "vst", nfeatures = 2000)
+mso2 <- RunPCA(mso2, features = VariableFeatures(object = mso2))
+pca_SampleName <- DimPlot(mso2, reduction = "pca", pt.size = 0.5,group.by = "sample_name_M")
+
+#cell cycle scoring 
+# A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.  We can
+# segregate this list into markers of G2/M phase and markers of S phase
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+
+
+#####human########
+cd /data2/hanna/axonoutgrowth
+singularity shell --bind /data2:/mnt singlecell.sif
+cd /mnt/hanna/axonoutgrowth/human2/seurat
+R
+
+library(dplyr)
+library(Seurat)
+library(patchwork)
+library(Matrix)
+library(ggplot2)
+
+#reading in the data
+path2data <- "/mnt/hanna/axonoutgrowth/data/human/"
+counts <- readMM(paste0(path2data, "counts.mtx"))
+metadata <- read.csv(paste0(path2data, "metadata.csv"))
+barcodes <- read.csv(paste0(path2data, "barcodes.csv"))
+gene_info <- read.csv(paste0(path2data, "gene_info.csv"))
+
+counts <- as(counts, "CsparseMatrix")
+rownames(counts) <- gene_info$unique_name
+colnames(counts) <- barcodes$barcodes 
+
+#make mouse surat object (mso)
+hso <- CreateSeuratObject(counts = counts,
+                            assay = "RNA",
+                            meta.data = metadata,
+                            project = "AxonOutgrowth_Human"
+                          )
+
+saveRDS(hso, "HumanSeuratObject_raw.rds")
+
+# An object of class Seurat 
+# 62704 features across 1816463 samples within 1 assay 
+# Active assay: RNA (62704 features, 0 variable features)
+# 1 layer present: counts
+
+hso[["percent.mt"]] <- PercentageFeatureSet(hso, pattern = "^MT-")
+head(hso@meta.data, 5)
+
+#ploting QC plots 
+nFeature_bySampleName <- VlnPlot(mso, features = "nFeature_RNA", pt.size = 0, group.by = "sample_name_M", flip = TRUE, log = TRUE) 
+nFeature_bySampleName <- nFeature_bySampleName + theme(
+  axis.text.x = element_text(size = 8),
+  axis.title.x = element_text(size = 12), 
+  plot.title = element_text(size = 14)
+) + labs(
+  x = "Sample Name",  
+  y = "log[nFeature]"    
+)
+ggsave("nFeature_bySampleName_violin.png", plot = nFeature_bySampleName, width = 10, height = 8, dpi = 300)
+
+nCount_bySampleName <- VlnPlot(mso, features = "nCount_RNA", pt.size = 0, group.by = "sample_name_M", flip = TRUE, log = TRUE) 
+nCount_bySampleName <- nCount_bySampleName + theme(
+  axis.text.x = element_text(size = 8),
+  axis.title.x = element_text(size = 12), 
+  plot.title = element_text(size = 14)
+) + labs(
+  x = "Sample Name",  
+  y = "log[nCount]"    
+)
+ggsave("nCount_bySampleName_violin.png", plot = nCount_bySampleName, width = 10, height = 8, dpi = 300)
+
+PerMT_bySampleName <- VlnPlot(mso, features = "percent.mt", pt.size = 0, group.by = "sample_name_M", flip = TRUE, log = TRUE) 
+PerMT_bySampleName <- PerMT_bySampleName + theme(
+  axis.text.x = element_text(size = 8),
+  axis.title.x = element_text(size = 12), 
+  plot.title = element_text(size = 14)
+) + labs(
+  x = "Sample Name",  
+  y = "log[PerMT]"    
+)
+ggsave("PerMT_bySampleName_violin.png", plot = PerMT_bySampleName, width = 10, height = 8, dpi = 300)
+
+plot1 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "percent.mt", log = FALSE, jitter = TRUE, group.by = "sample_name_M")
+ggsave("nCounts_vs_PerMT.png", plot = plot1, width = 10, height = 8, dpi = 300)
+plot2 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "sample_name_M")
+ggsave("nCounts_vs_nFeature.png", plot = plot2, width = 10, height = 8, dpi = 300)
+
+saveRDS(mso, "MouseSeuratObject_befroeSubset.rds")
+
+mso <- subset(mso, subset = nFeature_RNA > 200 & nCount_RNA > 200 & percent.mt < 20 & complexity < 0.9)
+mso@meta.data$complexity =  mso@meta.data$nFeature_RNA/mso@meta.data$nCount_RNA
+
+plot1 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "percent.mt", log = FALSE, jitter = TRUE, group.by = "sample_name_M")
+ggsave("nCounts_vs_PerMT_subset.png", plot = plot1, width = 10, height = 8, dpi = 300)
+plot2 <- FeatureScatter(mso, feature1 = "nCount_RNA", feature2 = "nFeature_RNA", group.by = "sample_name_M")
+ggsave("nCounts_vs_nFeature_subset.png", plot = plot2, width = 10, height = 8, dpi = 300)
+
+saveRDS(mso, "MouseSeuratObject_Subset_beforNorm.rds")
+
+
+#normalisation 
+mso <- NormalizeData(mso, normalization.method = "LogNormalize", scale.factor = 10000)
+
+#identifying highly variable features 
+mso <- FindVariableFeatures(mso, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(mso), 10)
+
+top10 
+#[1] "Rs1"           "Sag"           "Pdc"           "Pkd1l1"       
+#[5] "Opn1sw"        "Flt1"          "F630040K05Rik" "Rbp3"         
+#[9] "Pde6g"         "Pde6b
+#Some of these gens are invovled in retinal tissue and they are porbably most variabel due to 2_22_2 sample beign rich in retial identities. 
+#removing the sample
+mso <- subset(mso, subset = sample_name_M != "2_22_2")
+
+#identifying highly variable features after sampel 2_22_2 was removed
+mso <- FindVariableFeatures(mso, selection.method = "vst", nfeatures = 2000)
+top10 <- head(VariableFeatures(mso), 10)
+
+top10 
+#[1] "Dnah8"   "Dlx6os1" "Cdc20b"  "Ttr"     "Ttc6"    "Gm49678" "Hoxc6"  
+3[8] "Nr5a2"   "Hoxd3"   "L1td1"
+
+plot1 <- VariableFeaturePlot(mso)
+ggsave("Unlabled_VariableFeatures.png", plot = plot1, width = 10, height = 8, dpi = 300)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+ggsave("Labled_VariableFeatures.png", plot = plot2, width = 10, height = 8, dpi = 300)
+
+#scaling 
+all.genes <- rownames(mso)
+mso <- ScaleData(mso, features = all.genes)
+
+
+#performing lienar dimentionality reduction: PCA
+mso <- RunPCA(mso, features = VariableFeatures(object = mso))
+print(mso[["pca"]], dims = 1:5, nfeatures = 10)
+# PC_ 1 
+# Positive:  ENSMUSG00000121179, Nalf1, Nrxn1, Myt1l, Gm26871, Snhg14, Akap6, Celf4, Ccser1, Usp29 
+# Negative:  Rorb, Etl4, Smoc1, Plagl1, Cdon, H19, Vsx2, Mecom, Fbn2, Cdh20 
+# PC_ 2 
+# Positive:  ENSMUSG00000062991, Celf4, Nrxn1, Ccser1, Unc5d, Myt1l, Sorbs2, Nalf1, Snhg14, Dscam 
+# Negative:  Tyr, Otx2os1, Oca2, Pmel, Kcnq5, Slc6a15, Gpnmb, Slc4a5, Kcnip4, Mitf 
+# PC_ 3 
+# Positive:  Rorb, Cdh20, Cngb3, Kctd8, Unc13c, Ankrd33b, Dkk3, Cdon, Cntn1, Ush2a 
+# Negative:  Rspo3, Rspo2, Sox2ot, Erbb4, Mir9-3hg, Rfx4, Lrp1b, Prdm16, Tmem132c, Masp1 
+# PC_ 4 
+# Positive:  Oca2, Gpnmb, Tyr, Stxbp5l, Slc6a15, Kcnq5, Nebl, Mylk, Col8a1, Pmel 
+# Negative:  Rspo2, Sox2ot, Lmx1a, Wnt8b, Rspo3, Rspo1, Lrrtm3, Masp1, Eya4, Cachd1 
+# PC_ 5 
+# Positive:  Dnah8, Lncenc1, L1td1, Cdh1, Pvt1, Zfp990, Nr5a2, Alpl, Slc2a3, Zfp42 
+# Negative:  Rspo2, Gabrb3, Rspo3, Tyr, Sorbs2, Rorb, Kcnip4, Pmel, Ccser1, Prkg1 
+
+VizDimLoadings(mso, dims = 1:5, reduction = "pca", ncol = 5)
+pca_SampleName <- DimPlot(mso, reduction = "pca", pt.size = 0.5,group.by = "sample_name_M")
+ggsave("PCA_bySampleName.png", plot = pca_SampleName, width = 10, height = 8, dpi = 300)
+
+pca_batch <- DimPlot(mso, reduction = "pca", pt.size = 0.5,group.by = "batch_M")
+ggsave("PCA_bybatch.png", plot = pca_batch, width = 10, height = 8, dpi = 300)
+
+DimHeatmap(mso, dims = 1, cells = 500, balanced = TRUE)
+DimHeatmapPCA15 <- DimHeatmap(mso, dims = 1:15, cells = 500, balanced = TRUE)
+ggsave("DimHeatMap_first_15PCAs.png", plot = DimHeatmapPCA15,  width = 8, height = 12, dpi = 300)
+
+elbow <- ElbowPlot(mso)
+ggsave("elbow_plot.png", plot = elbow,  width = 10, height = 8, dpi = 300)
