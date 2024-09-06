@@ -195,6 +195,9 @@ mso <- RunPCA(mso)
 
 mso <- IntegrateLayers(object = mso, method = CCAIntegration, orig.reduction = "pca", new.reduction = "integrated.cca",verbose = FALSE)
 mso <- IntegrateLayers(object = mso, method = HarmonyIntegration, orig.reduction = "pca", new.reduction = "harmony",verbose = FALSE)
+options(future.globals.maxSize = 3 * 1024^3)
+mso <- IntegrateLayers(object = mso, method = JointPCAIntegration, orig.reduction = "pca", new.reduction = "integrated.jpca",verbose = FALSE)
+
 
 ElbowPlot(mso, reduction = "integrated.cca")
 
@@ -232,6 +235,28 @@ saveRDS(mso, "/mnt/hanna/axonoutgrowth/mouse2/seurat/mso/MouseSeuratObject_Subse
 #finding markers
 FindMarkers(mso, ident.1 = 2)
 
+
+mso <- readRDS("/mnt/hanna/axonoutgrowth/mouse2/seurat/mso/MouseSeuratObject_Subset.rds")
+mso[["RNA"]] <- split(mso[["RNA"]], f = mso$batch_M)
+mso <- NormalizeData(mso)
+mso <- FindVariableFeatures(mso)
+mso <- ScaleData(mso)
+mso <- RunPCA(mso)
+
+options(future.globals.maxSize = 3 * 1024^3)
+mso <- IntegrateLayers(object = mso, method = JointPCAIntegration, orig.reduction = "pca", new.reduction = "integrated.jpca",verbose = FALSE)
+
+mso <- FindNeighbors(mso, reduction = "integrated.jpca", dims = 1:5)
+mso <- FindClusters(mso, resolution = 0.2, cluster.name = "jpca_clusters")
+mso <- RunUMAP(mso, reduction = "integrated.jpca", dims = 1:5, reduction.name = "umap.jpca")
+
+p1 <- DimPlot(mso, reduction = "umap.jpca", group.by = c("day_M"), combine = FALSE, label.size = 2)
+p2 <- DimPlot(mso, reduction = "umap.jpca", group.by = c("batch_M"), combine = FALSE, label.size = 2)
+p3 <- DimPlot(mso, reduction = "umap.jpca", group.by = c("sample_name_M"), combine = FALSE, label.size = 2)
+p2 <- CombinePlots(plots = p2)
+p3 <- CombinePlots(plots = p3)
+ggsave("umap_joinPCA_byBatch.png",plot = p2)
+ggsave("umap_joinPCA_bySampleName.png",plot = p3)
 
 
 
