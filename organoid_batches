@@ -1,0 +1,36 @@
+import pandas as pd
+
+## Read in table
+timeline1 = pd.read_csv("[/Users/hannas/Desktop/G241107.csv]")
+
+## Enter the cell line and batch number below to create a new column with what will be the basis for the title of each event
+timeline1["Subject”] = “G[241107]_[hehd-1]_D"
+
+## Replace NaN with a space
+timeline1 = timeline1.fillna(" “)
+
+## Add new columns and rearrange columns to match Google Calendar import format
+
+## Combine the details of the batch and cell line with the ‘Procedure’ to be done each day for the event titles
+timeline1["Subject”] = timeline1["Subject”] + timeline1["Day"].astype(str) + ": “ + timeline1["Procedure"]
+
+## Make it appear as all-day event in your calendar (optional)
+timeline1["All Day Event”] = True
+
+## Separate the YYMMDD and add in hyphens for Google Calendar formatting (I have to omit the hyphen originally so that the formulas in the first bit work)
+timeline1["Date”] = timeline1["Date"].astype(str)
+timeline1["Year”] = timeline1["Date"].str[0:4]
+timeline1["Month”] = timeline1["Date"].str[4:6]
+timeline1["Dateday”] = timeline1["Date"].str[6:]
+timeline1["Start Date”] = timeline1["Year”] + “-“ + timeline1["Month”] + “-“ + timeline1["Dateday”]
+
+## Add description to the calendar event based on what other info you want, in this case the media to use and any other notes I’ve made in the table
+timeline1["Description"]=timeline1["Media”] + " ; “ + timeline1["Notes"]
+timeline1=timeline1.drop(labels=["Year","Month","Dateday","Date","Day","Duration","Media","Notes"], axis=1)
+
+# Order the new columns to man Google Calendar happy (also removes the other columns we don’t want)
+col_order = ["Subject","Start Date","All Day Event","Description"]
+timeline1 = timeline1.reindex(columns=col_order)
+
+timeline1.to_csv(“[/Users/hannas/Desktop/G241107.csv]")
+print(timeline1)
